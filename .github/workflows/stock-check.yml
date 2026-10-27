@@ -1,0 +1,81 @@
+name: Whey restock check
+
+on:
+  schedule:
+    # Every 30 minutes (off the top of the hour, when GitHub is busiest).
+    - cron: "7,37 * * * *"
+  workflow_dispatch:
+    inputs:
+      test_notification:
+        description: "Send a test alert now, even though it's sold out"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: stock-check
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check stock
+        id: stock
+        run: python3 check_stock.py
+
+      - name: Ensure the in-stock label exists
+        run: gh label create in-stock --color 2ea44f --description "Product is back in stock" --force
+
+      - name: Alert me
+        if: steps.stock.outputs.available == 'true' || inputs.test_notification
+        env:
+          TEST: ${{ inputs.test_notification }}
+          OWNER: ${{ github.repository_owner }}
+          TITLE: ${{ steps.stock.outputs.title }}
+          PRICE: ${{ steps.stock.outputs.price }}
+          URL: ${{ steps.stock.outputs.url }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: |
+          label_args=()
+          footer="_This issue closes itself when the product sells out again, so the next restock triggers a fresh alert._"
+          if [ "$TEST" = "true" ]; then
+            issue_title="[Test] Restock alert for $TITLE"
+            footer="_This is a test alert. Close it whenever you like._"
+          else
+            # One open in-stock issue means you were already alerted for this restock.
+            open=$(gh issue list --label in-stock --state open --json number --jq length)
+            if [ "$open" != "0" ]; then
+              echo "Still in stock and already alerted; nothing to do."
+              exit 0
+            fi
+            issue_title="Back in stock: $TITLE"
+            label_args=(--label in-stock)
+          fi
+
+          body=$(printf '@%s **%s** is available for %s.\n\n👉 %s\n\n%s' "$OWNER" "$TITLE" "$PRICE" "$URL" "$footer")
+          gh issue create --title "$issue_title" --body "$body" "${label_args[@]}"
+
+          if [ -n "$NTFY_TOPIC" ]; then
+            curl -fsS "https://ntfy.sh/$NTFY_TOPIC" \
+              -H "Title: $issue_title" \
+              -H "Click: $URL" \
+              -H "Priority: high" \
+              -H "Tags: tada" \
+              -d "$TITLE is available for $PRICE. Tap to open the product page."
+          fi
+
+      - name: Re-arm after it sells out again
+        if: steps.stock.outputs.available == 'false'
+        run: |
+          for n in $(gh issue list --label in-stock --state open --json number --jq '.[].number'); do
+            gh issue close "$n" --comment "Sold out again. You'll get a new alert on the next restock."
+          done
