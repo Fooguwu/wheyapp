@@ -3,7 +3,7 @@ name: Whey restock check
 on:
   schedule:
     # Every 10 minutes (offset from :00, when GitHub is busiest).
-    - cron: "3-59/10 * * * *"
+    - cron: "3,13,23,33,43,53 * * * *"
   workflow_dispatch:
     inputs:
       test_notification:
@@ -33,8 +33,10 @@ jobs:
         id: stock
         run: python3 check_stock.py
 
-      - name: Ensure the in-stock label exists
-        run: gh label create in-stock --color 2ea44f --description "Product is back in stock" --force
+      - name: Ensure labels exist
+        run: |
+          gh label create in-stock --color 2ea44f --description "Product is back in stock" --force
+          gh label create checker-broken --color d73a4a --description "The restock checker is failing" --force
 
       - name: Alert me
         if: steps.stock.outputs.available == 'true' || inputs.test_notification
@@ -80,6 +82,27 @@ jobs:
           for n in $(gh issue list --label in-stock --state open --json number --jq '.[].number'); do
             gh issue close "$n" --comment "Sold out again. You'll get a new alert on the next restock."
           done
+
+      - name: Clear an earlier failure alert
+        run: |
+          for n in $(gh issue list --label checker-broken --state open --json number --jq '.[].number'); do
+            gh issue close "$n" --comment "The checker is working again."
+          done
+
+      # Without this, a broken check (site down, product moved or delisted)
+      # would look exactly like "still sold out".
+      - name: Alert me if the checker breaks
+        if: failure()
+        env:
+          OWNER: ${{ github.repository_owner }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh label create checker-broken --color d73a4a --description "The restock checker is failing" --force
+          open=$(gh issue list --label checker-broken --state open --json number --jq length)
+          if [ "$open" = "0" ]; then
+            gh issue create --label checker-broken --title "Restock checker is failing" \
+              --body "@$OWNER A stock check failed, so restock alerts won't work until it's fixed. This issue closes itself once a check succeeds again. Run log: $RUN_URL"
+          fi
 
       # GitHub pauses scheduled workflows in public repos after 60 days without
       # commits; re-enabling the workflow through the API resets that timer.

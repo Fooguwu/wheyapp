@@ -12,6 +12,9 @@ A GitHub Actions workflow (`.github/workflows/stock-check.yml`) runs every 10 mi
   GitHub emails me and pushes a notification to the GitHub mobile app.
 - **Still in stock on later runs:** nothing happens, because the open issue means I've already been alerted.
 - **Sold out again:** it closes the issue, so the next restock sends a new alert.
+- **The check itself fails** (site down, product moved or delisted): it opens a
+  `checker-broken` issue that @-mentions me, and closes it once a check succeeds again.
+  So no issue means it's still sold out, not that the checker quietly stopped working.
 
 ## Instant phone notifications (optional)
 
