@@ -4,7 +4,7 @@ Tells me when [AGN Roots Grassfed Whey (3 lbs)](https://agnroots.com/products/ag
 
 ## How it works
 
-A GitHub Actions workflow (`.github/workflows/stock-check.yml`) runs every 30 minutes and calls
+A GitHub Actions workflow (`.github/workflows/stock-check.yml`) runs every 10 minutes and calls
 `check_stock.py`, which reads the store's public Shopify product data
 (`/products/<handle>.js`) and looks at each variant's `available` flag.
 
@@ -32,6 +32,8 @@ Run the check locally with `python3 check_stock.py`. To watch a different produc
 ## Notes
 
 - Scheduled workflows run only on the repo's **default branch**, and GitHub may delay a scheduled run by a few minutes.
-- This repo is private, so each run uses about 1 of the 2,000 free Actions minutes per month.
-  Running every 30 minutes uses about 1,500 a month. To check more often, make the repo public
-  (Actions minutes are then free) and tighten the `cron` line.
+- The repo is public, so Actions minutes are free. If it goes private again, each run costs about
+  1 of the 2,000 free minutes per month, so slow the `cron` line to every 30 minutes.
+- GitHub pauses scheduled workflows in public repos after 60 days without commits. The workflow's
+  last step re-enables itself each run to reset that timer. If it ever gets paused anyway, GitHub
+  emails a warning and you can turn it back on from the Actions tab.

@@ -2,8 +2,8 @@ name: Whey restock check
 
 on:
   schedule:
-    # Every 30 minutes (off the top of the hour, when GitHub is busiest).
-    - cron: "7,37 * * * *"
+    # Every 10 minutes (offset from :00, when GitHub is busiest).
+    - cron: "3-59/10 * * * *"
   workflow_dispatch:
     inputs:
       test_notification:
@@ -12,6 +12,7 @@ on:
         default: false
 
 permissions:
+  actions: write
   contents: read
   issues: write
 
@@ -79,3 +80,9 @@ jobs:
           for n in $(gh issue list --label in-stock --state open --json number --jq '.[].number'); do
             gh issue close "$n" --comment "Sold out again. You'll get a new alert on the next restock."
           done
+
+      # GitHub pauses scheduled workflows in public repos after 60 days without
+      # commits; re-enabling the workflow through the API resets that timer.
+      - name: Keep the schedule alive
+        continue-on-error: true
+        run: gh api -X PUT "repos/$GH_REPO/actions/workflows/stock-check.yml/enable"
